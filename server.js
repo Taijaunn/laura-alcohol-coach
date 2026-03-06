@@ -17,6 +17,9 @@ app.use(
   })
 );
 
+// ── Per-phone processing lock to prevent duplicate replies ───
+const processing = new Set();
+
 // ── Health check ──────────────────────────────────────────────
 app.get("/", (_req, res) => {
   res.json({ status: "ok", app: "Laura — Alcohol Coach" });
@@ -49,33 +52,43 @@ app.post("/webhook/blooio", async (req, res) => {
     // Respond 200 immediately so Blooio doesn't retry
     res.status(200).json({ received: true });
 
-    // 3. Ignore blank messages
+    // 4. Ignore blank messages
     if (!text) return;
 
-    // 4. Route: onboarding or conversation
-    let user = await db.getUser(phone);
-
-    if (!user) {
-      // Brand-new user
-      user = await db.createUser(phone);
-      await db.saveMessage(phone, "user", text);
-      const greeting =
-        "Hey! I'm Laura \u{1F44B} I'm so glad you're here. I'm your " +
-        "personal alcohol reduction coach and I'm here to support " +
-        "you every step of the way. What's your name?";
-      await blooio.sendMessage(phone, greeting);
-      await db.saveMessage(phone, "assistant", greeting);
+    // 5. Prevent duplicate processing if user sends rapid messages
+    if (processing.has(phone)) {
+      console.log(`Already processing a message for ${phone}, skipping`);
       return;
     }
+    processing.add(phone);
 
-    if (!user.onboarding_complete) {
-      await handleOnboarding(user, phone, text);
-    } else {
-      await handleConversation(user, phone, text);
+    try {
+      // 6. Route: onboarding or conversation
+      let user = await db.getUser(phone);
+
+      if (!user) {
+        // Brand-new user
+        user = await db.createUser(phone);
+        await db.saveMessage(phone, "user", text);
+        const greeting =
+          "Hey! I'm Laura \u{1F44B} I'm so glad you're here. I'm your " +
+          "personal alcohol reduction coach and I'm here to support " +
+          "you every step of the way. What's your name?";
+        await blooio.sendMessage(phone, greeting);
+        await db.saveMessage(phone, "assistant", greeting);
+        return;
+      }
+
+      if (!user.onboarding_complete) {
+        await handleOnboarding(user, phone, text);
+      } else {
+        await handleConversation(user, phone, text);
+      }
+    } finally {
+      processing.delete(phone);
     }
   } catch (err) {
     console.error("Webhook error:", err);
-    // Already sent 200, so we just log
   }
 });
 
