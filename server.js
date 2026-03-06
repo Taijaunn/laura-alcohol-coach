@@ -26,14 +26,14 @@ app.get("/", (_req, res) => {
 app.post("/webhook/blooio", async (req, res) => {
   try {
     // 1. Verify signature
-    const signature = req.headers["blooio-signature"];
+    const signature = req.headers["x-blooio-signature"];
     if (!blooio.verifySignature(req.rawBody, signature)) {
       console.warn("Webhook signature verification failed");
       return res.status(401).json({ error: "Invalid signature" });
     }
 
-    // 2. Extract phone + text
-    const phone = req.body.contact?.phone || req.body.phone;
+    // 2. Extract phone + text (Blooio uses external_id/sender for phone)
+    const phone = req.body.external_id || req.body.sender;
     const text = (req.body.text || "").trim();
 
     if (!phone) {
