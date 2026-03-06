@@ -33,7 +33,12 @@ app.post("/webhook/blooio", async (req, res) => {
       }
     }
 
-    // 2. Extract phone + text (Blooio uses external_id/sender for phone)
+    // 2. Only process inbound messages — ignore sent/delivered/read events
+    if (req.body.event !== "message.received") {
+      return res.status(200).json({ ignored: true });
+    }
+
+    // 3. Extract phone + text (Blooio uses external_id/sender for phone)
     const phone = req.body.external_id || req.body.sender;
     const text = (req.body.text || "").trim();
 
